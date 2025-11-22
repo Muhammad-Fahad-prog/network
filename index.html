@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebChat</title>
+    <style>
+        /* --- BASE --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        body { background-color: #d1d7db; height: 100vh; display: flex; align-items: center; justify-content: center; }
+        
+        /* --- ICONS & UTILS --- */
+        .icon { cursor: pointer; font-size: 1.2rem; color: #54656f; padding: 8px; border-radius: 50%; transition: background 0.2s; display: flex; align-items: center; justify-content: center; }
+        .icon:hover { background-color: rgba(0,0,0,0.05); }
+        .hidden { display: none !important; }
+        
+        /* --- MODAL (Profile) --- */
+        #modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); z-index: 200; display: none; align-items: center; justify-content: center; }
+        .modal { background: white; width: 350px; padding: 20px; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .modal h3 { margin-bottom: 15px; color: #00a884; }
+        .modal-field { margin-bottom: 15px; }
+        .modal-field label { display: block; font-size: 12px; color: #666; margin-bottom: 5px; }
+        .modal-field input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+        .btn-save { background: #00a884; color: white; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; }
+        .btn-cancel { background: #eee; color: #333; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; }
+
+        /* --- AUTH SCREEN --- */
+        #auth-screen { background: white; width: 400px; border-radius: 3px; box-shadow: 0 17px 50px 0 rgba(0,0,0,0.1); overflow: hidden; display: flex; flex-direction: column; z-index: 100; }
+        .auth-header { background-color: #00a884; color: white; padding: 40px 20px 20px; text-align: center; }
+        .auth-tabs { display: flex; border-bottom: 1px solid #ddd; }
+        .tab { flex: 1; padding: 15px; cursor: pointer; background: #f0f2f5; border: none; font-weight: 500; }
+        .tab.active { background: white; color: #00a884; border-bottom: 3px solid #00a884; }
+        .auth-body { padding: 30px; }
+        .form-group { margin-bottom: 20px; }
+        .form-group input { width: 100%; padding: 10px 0; border: none; border-bottom: 2px solid #00a884; outline: none; font-size: 16px; }
+        .btn-primary { width: 100%; padding: 10px; background: #00a884; color: white; border: none; border-radius: 3px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+
+        /* --- APP SCREEN --- */
+        #app-screen { display: none; width: 95vw; height: 95vh; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); overflow: hidden; }
+        .app-container { display: flex; width: 100%; height: 100%; }
+        
+        /* SIDEBAR */
+        .sidebar { width: 30%; min-width: 300px; border-right: 1px solid #e9edef; display: flex; flex-direction: column; background: white; }
+        .sidebar-header { height: 60px; background: #f0f2f5; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-right: 1px solid #d1d7db; }
+        .user-avatar { width: 40px; height: 40px; background: #dfe5e7; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; cursor: pointer; }
+        .contact-list { flex: 1; overflow-y: auto; }
+        .contact { display: flex; align-items: center; padding: 0 15px; height: 72px; cursor: pointer; border-bottom: 1px solid #f0f2f5; }
+        .contact:hover { background-color: #f5f6f6; }
+        .contact.active { background-color: #f0f2f5; }
+        .c-avatar { width: 49px; height: 49px; border-radius: 50%; background: #ccc; margin-right: 15px; display: flex; align-items: center; justify-content: center; color: white; position: relative; }
+        .c-avatar.online::after { content: ''; position: absolute; bottom: 2px; right: 2px; width: 10px; height: 10px; background: #00a884; border: 2px solid white; border-radius: 50%; }
+        
+        /* CHAT AREA */
+        .chat-area { flex: 1; display: flex; flex-direction: column; background-color: #efeae2; position: relative; }
+        .chat-area::before { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0.4; background-image: radial-gradient(#d1d7db 10%, transparent 10%); background-size: 20px 20px; pointer-events: none; }
+        .chat-header { height: 60px; background: #f0f2f5; padding: 10px 16px; display: flex; align-items: center; z-index: 10; border-bottom: 1px solid #d1d7db; }
+        
+        /* MESSAGES */
+        .messages { flex: 1; padding: 20px 60px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; z-index: 5; }
+        .msg-row { display: flex; width: 100%; margin-bottom: 2px; }
+        .msg-row.self { justify-content: flex-end; }
+        .msg-row.peer { justify-content: flex-start; }
+        .msg-bubble { max-width: 65%; padding: 6px 10px; border-radius: 7.5px; font-size: 14.2px; position: relative; box-shadow: 0 1px 0.5px rgba(11,20,26,.13); background: white; }
+        .msg-bubble.self { background-color: #d9fdd3; border-top-right-radius: 0; }
+        .msg-bubble.peer { background-color: white; border-top-left-radius: 0; }
+        .msg-bubble.system { align-self: center; background-color: #e8e8e8; font-size: 12px; padding: 5px 15px; border-radius: 8px; color: #54656f; margin: 10px 0; }
+        .msg-time { font-size: 10px; color: #667781; float: right; margin-top: 5px; margin-left: 5px; }
+        .ticks { font-size: 14px; color: #8696a0; margin-left: 3px; }
+        .ticks.read { color: #53bdeb; }
+
+        /* INPUT AREA */
+        .input-area { min-height: 62px; background: #f0f2f5; padding: 5px 10px; display: flex; align-items: center; z-index: 10; position: relative; }
+        .msg-input-wrapper { flex: 1; background: white; border-radius: 8px; padding: 9px 12px; margin: 0 8px; }
+        .msg-input { width: 100%; border: none; outline: none; font-size: 15px; }
+
+        /* RECORDING INTERFACE (Replaces Input) */
+        .recording-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #f0f2f5; display: none; align-items: center; padding: 0 20px; z-index: 20; }
+        .rec-dot { width: 12px; height: 12px; background: red; border-radius: 50%; margin-right: 10px; animation: blink 1s infinite; }
+        .rec-timer { font-family: monospace; font-size: 16px; color: #333; flex: 1; }
+        .rec-cancel { color: #d32f2f; cursor: pointer; font-weight: bold; margin-right: 20px; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+
+    <!-- MODAL: ACCOUNT -->
+    <div id="modal-overlay">
+        <div class="modal">
+            <h3>My Account</h3>
+            <div class="modal-field">
+                <label>Phone Number</label>
+                <input type="text" id="prof-phone" readonly style="background: #f9f9f9; color: #555;">
+            </div>
+            <div class="modal-field">
+                <label>Username (Display Name)</label>
+                <input type="text" id="prof-username">
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="toggleModal(false)">Close</button>
+                <button class="btn-save" onclick="saveProfile()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AUTH SCREEN -->
+    <div id="auth-screen">
+        <div class="auth-header"><h2>WebChat</h2></div>
+        <div class="auth-tabs">
+            <button class="tab active" id="tab-login" onclick="switchTab('login')">LOGIN</button>
+            <button class="tab" id="tab-register" onclick="switchTab('register')">REGISTER</button>
+        </div>
+        <div class="auth-body">
+            <form onsubmit="handleAuth(event)">
+                <div class="form-group"><input type="text" id="inp-username" placeholder="Username" required></div>
+                <div class="form-group" id="group-contact" style="display:none;"><input type="text" id="inp-contact" placeholder="Phone Number (Unique ID)"></div>
+                <div class="form-group"><input type="password" id="inp-password" placeholder="Password" required></div>
+                <button type="submit" class="btn-primary" id="btn-auth">ENTER</button>
+                <div style="text-align: center; margin-top: 15px; font-size: 12px; color: red;" id="auth-error"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- APP SCREEN -->
+    <div id="app-screen">
+        <div class="app-container">
+            <!-- SIDEBAR -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <div class="user-avatar" onclick="toggleModal(true)" title="My Profile">👤</div>
+                    <div style="flex:1; margin-left:10px; font-weight:bold;" id="display-username">Me</div>
+                    <div class="icon" onclick="location.reload()" title="Logout">🚪</div>
+                </div>
+                <div class="contact-list" id="contact-list"></div>
+            </div>
+
+            <!-- CHAT AREA -->
+            <div class="chat-area">
+                <div class="chat-header">
+                    <div class="c-avatar" style="width:40px; height:40px; font-size:1rem;">👤</div>
+                    <div style="margin-left:15px;">
+                        <div style="font-weight:bold;" id="chat-title">Group Chat</div>
+                        <div style="font-size:12px; color:#666;" id="chat-status">Everyone</div>
+                    </div>
+                </div>
+
+                <div class="messages" id="messages-area"></div>
+
+                <div class="input-area">
+                    <!-- Standard Input -->
+                    <div class="icon" onclick="document.getElementById('file-input').click()">📎</div>
+                    <input type="file" id="file-input" class="hidden" onchange="handleFile(event)">
+                    <div class="icon" onclick="shareContact()">☎️</div>
+                    
+                    <div class="msg-input-wrapper">
+                        <input type="text" class="msg-input" id="msg-input" placeholder="Type a message" onkeypress="checkEnter(event)">
+                    </div>
+                    
+                    <!-- Mic Button -->
+                    <div class="icon" onclick="startVoice()">🎤</div>
+                    <div class="icon" onclick="sendMessage()">➤</div>
+
+                    <!-- Recording Overlay -->
+                    <div class="recording-ui" id="rec-ui">
+                        <div class="rec-dot"></div>
+                        <div class="rec-timer" id="rec-timer">00:00</div>
+                        <div class="rec-cancel" onclick="cancelVoice()">Cancel</div>
+                        <div class="icon" style="background:#00a884; color:white" onclick="sendVoice()">➤</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws, myUsername, myPhone, currentTarget="Group Chat", authMode="login";
+        let mediaRecorder=null, audioChunks=[], recInterval;
+
+        function connect() {
+            const host = window.location.hostname || "localhost";
+            ws = new WebSocket("ws://" + host + ":8765");
+            ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
+        }
+
+        function switchTab(mode) {
+            authMode = mode;
+            document.getElementById('tab-login').className = mode==='login'?'tab active':'tab';
+            document.getElementById('tab-register').className = mode==='register'?'tab active':'tab';
+            document.getElementById('group-contact').style.display = mode==='register'?'block':'none';
+            document.getElementById('btn-auth').innerText = mode==='login'?'LOGIN':'REGISTER';
+        }
+
+        function handleAuth(e) {
+            e.preventDefault();
+            ws.send(JSON.stringify({
+                type: authMode,
+                username: document.getElementById('inp-username').value,
+                password: document.getElementById('inp-password').value,
+                contact: document.getElementById('inp-contact').value
+            }));
+        }
+
+        function handleMessage(data) {
+            if(data.type === 'auth_result') {
+                if(data.status === 'success') {
+                    if(authMode === 'login') {
+                        myUsername = data.username;
+                        myPhone = data.contact; // Store my phone
+                        document.getElementById('display-username').innerText = myUsername;
+                        document.getElementById('prof-username').value = myUsername;
+                        document.getElementById('prof-phone').value = myPhone;
+                        document.getElementById('auth-screen').style.display = 'none';
+                        document.getElementById('app-screen').style.display = 'block';
+                    } else { alert(data.msg); switchTab('login'); }
+                } else document.getElementById('auth-error').innerText = data.msg;
+            }
+            else if(data.type === 'profile_updated') {
+                if(data.status === 'success') {
+                    alert(data.msg);
+                    myUsername = data.new_username;
+                    document.getElementById('display-username').innerText = myUsername;
+                    toggleModal(false);
+                } else alert(data.msg);
+            }
+            else if(data.type === 'user_list') renderContacts(data.users);
+            else if(['text', 'image', 'voice', 'contact_card'].includes(data.type) || data.type==='system') {
+                const isGroup = data.isPublic;
+                const isRelevant = (currentTarget==='Group Chat' && isGroup) || 
+                                   (!isGroup && (data.sender===currentTarget || data.sender===myUsername && data.target===currentTarget));
+                if(isRelevant) renderMsg(data);
+            }
+        }
+
+        // --- RENDERING ---
+        function renderContacts(users) {
+            const list = document.getElementById('contact-list');
+            list.innerHTML = "";
+            const gDiv = document.createElement('div');
+            gDiv.className = `contact ${currentTarget==='Group Chat'?'active':''}`;
+            gDiv.onclick = () => selectChat('Group Chat');
+            gDiv.innerHTML = `<div class="c-avatar" style="background:#00a884">G</div><div><b>Group Chat</b><div style="font-size:12px;color:#666">Everyone</div></div>`;
+            list.appendChild(gDiv);
+            users.forEach(u => {
+                if(u.username === myUsername) return;
+                const div = document.createElement('div');
+                div.className = `contact ${currentTarget===u.username?'active':''}`;
+                div.onclick = () => selectChat(u.username);
+                div.innerHTML = `<div class="c-avatar ${u.status==='Online'?'online':''}">${u.username[0].toUpperCase()}</div>
+                                 <div><b>${u.username}</b><div style="font-size:12px;color:#666">${u.status}</div></div>`;
+                list.appendChild(div);
+            });
+        }
+
+        function selectChat(target) {
+            currentTarget = target;
+            document.getElementById('chat-title').innerText = target;
+            document.getElementById('chat-status').innerText = target==='Group Chat'?"Everyone":"Online";
+            document.getElementById('messages-area').innerHTML = "";
+            renderContacts(document.querySelectorAll('.contact').length > 0 ? [] : []); // Quick re-render trigger if needed, mostly handled by server update
+            // Request refresh from server ideally
+            ws.send(JSON.stringify({type:'req_list'})); 
+        }
+
+        function renderMsg(data) {
+            const area = document.getElementById('messages-area');
+            const isMe = data.sender === myUsername;
+            
+            // Avoid duplicates if already optimistically rendered? 
+            // Simple check: If last message is same content & timestamp & sender & type.
+            // For this demo, we rely on server echo as the truth, OR we rely on optimistic.
+            // To satisfy "not showing message" complaint: We will trust the server echo.
+            
+            if(data.type === 'system') {
+                area.innerHTML += `<div style="text-align:center; margin:10px"><span class="msg-bubble system">${data.content}</span></div>`;
+                return;
+            }
+
+            let content = "";
+            if(data.type === 'text') content = data.content;
+            else if(data.type === 'voice') content = `<div style="display:flex;align-items:center"><div class="icon" onclick="new Audio('${data.content}').play()">▶</div> Voice Note</div>`;
+            else if(data.type === 'contact_card') content = `☎️ Contact: <b>${data.content}</b> <a href="tel:${data.content}">Call</a>`;
+            else if(data.type === 'image') content = `<img src="${data.content}" style="max-width:200px;border-radius:5px">`;
+
+            const html = `
+                <div class="msg-row ${isMe?'self':'peer'}">
+                    <div class="msg-bubble ${isMe?'self':'peer'}">
+                        ${!isMe && currentTarget==='Group Chat'?`<div style="color:orange;font-size:10px;font-weight:bold">${data.sender}</div>`:''}
+                        ${content}
+                        <span class="msg-time">${data.timestamp.split(' ')[0]} ${isMe?'<span class="ticks read">✓✓</span>':''}</span>
+                    </div>
+                </div>`;
+            area.insertAdjacentHTML('beforeend', html);
+            area.scrollTop = area.scrollHeight;
+        }
+
+        // --- ACTIONS ---
+        function sendMessage() {
+            const inp = document.getElementById('msg-input');
+            const text = inp.value.trim();
+            if(!text) return;
+            ws.send(JSON.stringify({ type: 'text', content: text, target: currentTarget }));
+            inp.value = "";
+            // Optimistic Render removed to prevent duplicates, relying on server echo
+        }
+        function checkEnter(e) { if(e.key==='Enter') sendMessage(); }
+        function shareContact() { if(confirm("Share Phone?")) ws.send(JSON.stringify({type:'share_contact', target:currentTarget})); }
+        function handleFile(e) {
+            const r = new FileReader();
+            r.onload = ev => ws.send(JSON.stringify({type:'image', content:ev.target.result, target:currentTarget}));
+            r.readAsDataURL(e.target.files[0]);
+        }
+
+        // --- PROFILE MODAL ---
+        function toggleModal(show) { document.getElementById('modal-overlay').style.display = show?'flex':'none'; }
+        function saveProfile() {
+            const newName = document.getElementById('prof-username').value;
+            if(newName && newName !== myUsername) ws.send(JSON.stringify({type:'update_profile', new_username:newName}));
+        }
+
+        // --- VOICE RECORDING UI ---
+        async function startVoice() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.start();
+                
+                // UI Changes
+                document.getElementById('rec-ui').style.display = 'flex';
+                let sec = 0;
+                document.getElementById('rec-timer').innerText = "00:00";
+                recInterval = setInterval(() => {
+                    sec++;
+                    let m = Math.floor(sec/60).toString().padStart(2,'0');
+                    let s = (sec%60).toString().padStart(2,'0');
+                    document.getElementById('rec-timer').innerText = `${m}:${s}`;
+                }, 1000);
+            } catch(e) { alert("Mic Access Denied"); }
+        }
+
+        function cancelVoice() {
+            if(mediaRecorder) { mediaRecorder.stop(); mediaRecorder=null; }
+            clearInterval(recInterval);
+            document.getElementById('rec-ui').style.display = 'none';
+        }
+
+        function sendVoice() {
+            if(mediaRecorder) {
+                mediaRecorder.onstop = () => {
+                    const r = new FileReader();
+                    r.onload = ev => ws.send(JSON.stringify({type:'voice', content:ev.target.result, target:currentTarget}));
+                    r.readAsDataURL(new Blob(audioChunks));
+                };
+                mediaRecorder.stop();
+            }
+            clearInterval(recInterval);
+            document.getElementById('rec-ui').style.display = 'none';
+        }
+
+        connect();
+    </script>
+</body>
+</html>
